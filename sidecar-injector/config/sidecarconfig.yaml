@@ -7,7 +7,7 @@ data:
   sidecarconfig.yaml: |
     containers:
     - name: logger
-      image: localhost:5000/krvarma/logserver:latest
+      image: localhost:5000/eszanon/logserver:latest
       imagePullPolicy: IfNotPresent
       env:
         - name: LOGGER_PORT

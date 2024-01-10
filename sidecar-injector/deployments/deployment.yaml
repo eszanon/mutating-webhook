@@ -16,12 +16,16 @@ spec:
     spec:
       containers:
         - name: sidecar-injector
-          image: localhost:5000/krvarma/sidecar-injector:latest
+          image: localhost:5000/eszanon/sidecar-injector:latest
           imagePullPolicy: Always
           args:
             - -certDir=/etc/webhook/certs
             - -sidecarConfig=/etc/webhook/config/sidecarconfig.yaml
             - -port=8443
+          resources:
+            limits:
+              cpu: 50m
+              memory: 50Mi
           volumeMounts:
             - name: webhook-certs
               mountPath: /etc/webhook/certs

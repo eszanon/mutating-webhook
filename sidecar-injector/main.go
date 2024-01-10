@@ -1,25 +1,22 @@
 package main
 
 import (
-	"crypto/sha256"
 	"flag"
-	"io/ioutil"
 	"os"
-	"path/filepath"
 
-	"github.com/golang/glog"
-	hook "github.com/krvarma/wh/webhook"
+	hook "github.com/eszanon/mutating-webhook/webhook"
 	"gopkg.in/yaml.v2"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
-var log = logf.Log.WithName("example-controller")
+var log = ctrl.Log.WithName("sidecar-injector")
 
 type HookParamters struct {
 	certDir       string
@@ -27,22 +24,11 @@ type HookParamters struct {
 	port          int
 }
 
-func visit(files *[]string) filepath.WalkFunc {
-	return func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		*files = append(*files, path)
-		return nil
-	}
-}
-
 func loadConfig(configFile string) (*hook.Config, error) {
-	data, err := ioutil.ReadFile(configFile)
+	data, err := os.ReadFile(configFile)
 	if err != nil {
 		return nil, err
 	}
-	glog.Infof("New configuration: sha256sum %x", sha256.Sum256(data))
 
 	var cfg hook.Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
@@ -60,7 +46,14 @@ func main() {
 	flag.StringVar(&params.sidecarConfig, "sidecarConfig", "/etc/webhook/config/sidecarconfig.yaml", "Wehbook sidecar config")
 	flag.Parse()
 
-	logf.SetLogger(zap.Logger(false))
+	opts := zap.Options{
+		Development: true,
+	}
+	opts.BindFlags(flag.CommandLine)
+	flag.Parse()
+
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
 	entryLog := log.WithName("entrypoint")
 
 	// Setup a Manager
@@ -72,16 +65,45 @@ func main() {
 	}
 
 	config, err := loadConfig(params.sidecarConfig)
+	if err != nil {
+		entryLog.Error(err, "unable to load sidecar config")
+		os.Exit(1)
+	}
 
 	// Setup webhooks
 	entryLog.Info("setting up webhook server")
-	hookServer := mgr.GetWebhookServer()
 
-	hookServer.Port = params.port
-	hookServer.CertDir = params.certDir
+	sidecarInjector := hook.NewSidecarInjector(
+		"Logger",
+		mgr.GetClient(),
+		mgr.GetScheme(),
+		config,
+	)
+	// mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: sidecarInjector})
+
+	// Create a webhook server.
+	hookServer := webhook.NewServer(webhook.Options{
+		Port:    params.port,
+		CertDir: params.certDir,
+	})
+
+	if err := mgr.Add(hookServer); err != nil {
+		entryLog.Error(err, "unable to register webhook server")
+		os.Exit(1)
+	}
 
 	entryLog.Info("registering webhooks to the webhook server")
-	hookServer.Register("/mutate", &webhook.Admission{Handler: &hook.SidecarInjector{Name: "Logger", Client: mgr.GetClient(), SidecarConfig: config}})
+	// hookServer.Register("/mutate", &webhook.Admission{Handler: &hook.SidecarInjector{Name: "Logger", Client: mgr.GetClient(), SidecarConfig: config}})
+	hookServer.Register("/mutate", &webhook.Admission{Handler: &webhook.Admission{Handler: sidecarInjector}})
+
+	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+		entryLog.Error(err, "unable to set up health check")
+		os.Exit(1)
+	}
+	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+		entryLog.Error(err, "unable to set up ready check")
+		os.Exit(1)
+	}
 
 	entryLog.Info("starting manager")
 	if err := mgr.Start(signals.SetupSignalHandler()); err != nil {

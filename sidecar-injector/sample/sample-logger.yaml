@@ -19,10 +19,17 @@ spec:
         inject-logging-sidecar: "true"
     spec:
       containers:
-      - name: loggerclient
-        image: localhost:5000/krvarma/logclient:latest
-        env:
-        - name: LOG_SERVER
-          value: "http://localhost"
-        - name: LOG_PORT
-          value: "8082"
+      - name: test
+        image: nginx
+        resources:
+          limits:
+            cpu: 50m
+            memory: 50Mi
+        
+      # - name: loggerclient
+      #   image: localhost:5000/krvarma/logclient:latest
+      #   env:
+      #   - name: LOG_SERVER
+      #     value: "http://localhost"
+      #   - name: LOG_PORT
+      #     value: "8082"
