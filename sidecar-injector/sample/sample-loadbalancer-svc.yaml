@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sample-deployment
+  labels:
+    app: sample
+  annotations:
+    webhook-annotate: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sample
+  template:
+    metadata:
+      labels:
+        app: sample
+      annotations:
+        inject-logging-sidecar: "true"
+    spec:
+      containers:
+        - name: sample
+          image: nginx
+          ports:
+          - containerPort: 80
+          resources:
+            limits:
+              cpu: 50m
+              memory: 50Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: sample-service
+  name: sample-service
+spec:
+  ports:
+  - port: 8080
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: sample
+  type: LoadBalancer
+---
+
+

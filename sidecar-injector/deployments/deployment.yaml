@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: sidecar-injector
-          image: localhost:5000/eszanon/sidecar-injector:latest
+          image: docker.io/eszanon/sidecar-injector:latest
           imagePullPolicy: Always
           args:
             - -certDir=/etc/webhook/certs

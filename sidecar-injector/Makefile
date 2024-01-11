@@ -46,7 +46,7 @@ docker-push:
 	docker push ${IMG}
 
 install-cert-manager:
-	kubectl apply --validate=false -f https://github.com/jetstack/cert-manager/releases/download/v1.0.2/cert-manager.yaml
+	kubectl apply --validate=false -f kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.yaml
 
 deploy-sample:
 	kubectl apply -f sample/

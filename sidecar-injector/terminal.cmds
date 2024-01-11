@@ -1,10 +1,10 @@
 # Install cert-manager
-kubectl apply --validate=false -f https://github.com/jetstack/cert-manager/releases/download/v0.15.1/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.yaml
 
 // Build docker image
-make docker-build IMG=localhost:5000/eszanon/sidecar-injector:latest
+make docker-build IMG=docker.io/eszanon/sidecar-injector:latest
 // Build and push docker image
-make docker-build docker-push IMG=localhost:5000/eszanon/sidecar-injector:latest
+make docker-build docker-push IMG=docker.io/eszanon/sidecar-injector:latest
 
 // Deploy certificates
 make deploy-cert

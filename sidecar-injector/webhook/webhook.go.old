@@ -3,11 +3,9 @@ package hook
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 
-	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -18,8 +16,6 @@ import (
 // +kubebuilder:webhook:path=/mutate,mutating=true,failurePolicy=fail,groups="",resources=pods,verbs=create;update,versions=v1,name=magalu.cloud.io
 
 var log = logf.Log.WithName("sidecar-injector")
-
-const floatingIP = "159.112.237.177"
 
 // SidecarInjector annotates Pods
 type sidecarInjector struct {
@@ -71,55 +67,38 @@ func shoudInject(pod *corev1.Pod) bool {
 
 // SidecarInjector adds an annotation to every incoming pods.
 func (si *sidecarInjector) Handle(ctx context.Context, req admission.Request) admission.Response {
+	pod := &corev1.Pod{}
 
-	if req.RequestKind.Kind != "Service" {
-		return admission.Allowed("Not a service")
-	}
-
-	switch req.Operation {
-	case admissionv1.Create, admissionv1.Update:
-		return si.handleCreateOrUpdate(ctx, req)
-	case admissionv1.Delete:
-		return si.handleDelete(ctx, req)
-	}
-	return admission.Allowed("Not a recognized operation")
-}
-
-func (si *sidecarInjector) handleCreateOrUpdate(ctx context.Context, req admission.Request) admission.Response {
-	service := &corev1.Service{}
-	err := si.decoder.Decode(req, service)
-
-	if service.Spec.Type != corev1.ServiceTypeLoadBalancer {
-		log.Info("Not a LoadBalancer service")
-		return admission.Allowed("Not a LoadBalancer service")
-	}
-
+	err := si.decoder.Decode(req, pod)
 	if err != nil {
 		log.Error(err, "Sidecar injector: cannot decode")
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
-	if service.Name == "sample-service" {
-		log.Info("Injecting loadBalancerIP on load balancer")
-		service.Spec.LoadBalancerIP = floatingIP
-	} else {
-		log.Info("Not sample-service, denying request")
-		return admission.Denied("No floating IP available!")
+	if pod.Annotations == nil {
+		pod.Annotations = map[string]string{}
 	}
 
-	marshaledService, err := json.Marshal(service)
+	shoudInjectSidecar := shoudInject(pod)
+
+	if shoudInjectSidecar {
+		log.Info("Injecting sidecar...")
+
+		// pod.Spec.Containers = append(pod.Spec.Containers, si.SidecarConfig.Containers...)
+
+		pod.Annotations["logging-sidecar-added"] = "true"
+
+		log.Info("Sidecar ", si.Name, " injected.")
+	} else {
+		log.Info("Inject not needed.")
+	}
+
+	marshaledPod, err := json.Marshal(pod)
 
 	if err != nil {
 		log.Error(err, "Sidecar-Injector: cannot marshal")
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
-	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledService)
-}
 
-func (si *sidecarInjector) handleDelete(ctx context.Context, req admission.Request) admission.Response {
-	//TODO: call VPC API here to delete floating IP
-	msg := fmt.Sprintf("TODO: Delete FLOATING IP from MGC newtork API: %s", floatingIP)
-	log.Info(msg)
-	log.Info(fmt.Sprintf("Incoming delete request: %s", req.String()))
-	return admission.Allowed(msg)
+	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledPod)
 }
